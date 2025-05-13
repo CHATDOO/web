@@ -1,10 +1,10 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { mysqlTable, text, int, boolean, timestamp, json } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // User schema
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+export const users = mysqlTable("users", {
+  id: int("id").primaryKey().autoincrement(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
@@ -17,24 +17,24 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 // Server schema
-export const servers = pgTable("servers", {
-  id: serial("id").primaryKey(),
+export const servers = mysqlTable("servers", {
+  id: int("id").primaryKey().autoincrement(),
   name: text("name").notNull(),
   description: text("description").notNull(),
   category: text("category").notNull(),
   map: text("map").notNull(),
-  maxPlayers: integer("max_players").notNull(),
-  currentPlayers: integer("current_players").notNull().default(0),
+  maxPlayers: int("max_players").notNull(),
+  currentPlayers: int("current_players").notNull().default(0),
   isOnline: boolean("is_online").notNull().default(true),
   imageUrl: text("image_url"),
   connectionLink: text("connection_link").notNull(),
-  trackCount: integer("track_count").notNull().default(1),
+  trackCount: int("track_count").notNull().default(1),
   // Additional server info
   serverIP: text("server_ip"),
   httpPort: text("http_port"),
   serverPort: text("server_port"),
   lastUpdated: timestamp("last_updated").defaultNow(),
-  serverDetails: jsonb("server_details"),  // Store additional parsed server details
+  serverDetails: json("server_details"),  // Store additional parsed server details
 });
 
 export const insertServerSchema = createInsertSchema(servers).omit({
@@ -42,15 +42,15 @@ export const insertServerSchema = createInsertSchema(servers).omit({
 });
 
 // Car schema
-export const cars = pgTable("cars", {
-  id: serial("id").primaryKey(),
+export const cars = mysqlTable("cars", {
+  id: int("id").primaryKey().autoincrement(),
   name: text("name").notNull(),
   category: text("category").notNull(),
   imageUrl: text("image_url"),
   downloadUrl: text("download_url").notNull(),
-  rating: integer("rating").notNull().default(0),
-  specs: jsonb("specs"),
-  serverId: integer("server_id").references(() => servers.id, { onDelete: "set null" }),
+  rating: int("rating").notNull().default(0),
+  specs: json("specs"),
+  serverId: int("server_id"),
   filePath: text("file_path"),              // Path to the uploaded zip file
   extractedPath: text("extracted_path"),    // Path to the extracted content
   model3dPath: text("model3d_path"),        // Path to the 3D model file (.kn5)

@@ -39,8 +39,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const [createdUser] = await db.insert(users).values(user).returning();
-    return createdUser;
+    try {
+      // For MySQL/MariaDB, execute raw SQL to get the last inserted ID
+      await db.insert(users).values(user);
+      
+      // Get the user by username since we know it's unique
+      const [createdUser] = await db.select().from(users).where(eq(users.username, user.username));
+      
+      if (!createdUser) {
+        throw new Error(`User not found after creation: ${user.username}`);
+      }
+      
+      return createdUser;
+    } catch (error) {
+      console.error("Error creating user:", error);
+      throw error;
+    }
   }
 
   // Server operations
@@ -58,16 +72,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServer(server: InsertServer): Promise<Server> {
-    const [createdServer] = await db.insert(servers).values(server).returning();
-    return createdServer;
+    try {
+      await db.insert(servers).values(server);
+      
+      // Get the most recently created server with this name (assume name is unique enough)
+      const allServers = await db.select().from(servers).where(eq(servers.name, server.name));
+      const createdServer = allServers[0];
+      
+      if (!createdServer) {
+        throw new Error(`Server not found after creation: ${server.name}`);
+      }
+      
+      return createdServer;
+    } catch (error) {
+      console.error("Error creating server:", error);
+      throw error;
+    }
   }
 
   async updateServer(id: number, serverUpdate: Partial<InsertServer>): Promise<Server | undefined> {
-    const [updatedServer] = await db
+    await db
       .update(servers)
       .set({ ...serverUpdate, lastUpdated: new Date() })
-      .where(eq(servers.id, id))
-      .returning();
+      .where(eq(servers.id, id));
+    
+    const [updatedServer] = await db.select().from(servers).where(eq(servers.id, id));
     return updatedServer;
   }
 
@@ -95,16 +124,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCar(car: InsertCar): Promise<Car> {
-    const [createdCar] = await db.insert(cars).values(car).returning();
-    return createdCar;
+    try {
+      await db.insert(cars).values(car);
+      
+      // Get the most recently created car with this name (assume name is unique enough)
+      const allCars = await db.select().from(cars).where(eq(cars.name, car.name));
+      const createdCar = allCars[0];
+      
+      if (!createdCar) {
+        throw new Error(`Car not found after creation: ${car.name}`);
+      }
+      
+      return createdCar;
+    } catch (error) {
+      console.error("Error creating car:", error);
+      throw error;
+    }
   }
 
   async updateCar(id: number, carUpdate: Partial<InsertCar>): Promise<Car | undefined> {
-    const [updatedCar] = await db
+    await db
       .update(cars)
       .set({ ...carUpdate, uploadedAt: new Date() })
-      .where(eq(cars.id, id))
-      .returning();
+      .where(eq(cars.id, id));
+    
+    const [updatedCar] = await db.select().from(cars).where(eq(cars.id, id));
     return updatedCar;
   }
 

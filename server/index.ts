@@ -37,6 +37,69 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Create database schema
+  const { db } = await import('./db');
+  const { users, servers, cars } = await import('../shared/schema');
+  
+  console.log('Initializing database tables...');
+  try {
+    const createUsersTable = `
+      CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        is_admin BOOLEAN NOT NULL DEFAULT false
+      )
+    `;
+    
+    const createServersTable = `
+      CREATE TABLE IF NOT EXISTS servers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        category VARCHAR(255) NOT NULL,
+        map VARCHAR(255) NOT NULL,
+        max_players INT NOT NULL,
+        current_players INT NOT NULL DEFAULT 0,
+        is_online BOOLEAN NOT NULL DEFAULT true,
+        image_url VARCHAR(255),
+        connection_link VARCHAR(255) NOT NULL,
+        track_count INT NOT NULL DEFAULT 1,
+        server_ip VARCHAR(255),
+        http_port VARCHAR(255),
+        server_port VARCHAR(255),
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        server_details JSON
+      )
+    `;
+    
+    const createCarsTable = `
+      CREATE TABLE IF NOT EXISTS cars (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        category VARCHAR(255) NOT NULL,
+        image_url VARCHAR(255),
+        download_url VARCHAR(255) NOT NULL,
+        rating INT NOT NULL DEFAULT 0,
+        specs JSON,
+        server_id INT,
+        file_path VARCHAR(255),
+        extracted_path VARCHAR(255),
+        model3d_path VARCHAR(255),
+        uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    
+    // Execute raw SQL to create tables if they don't exist
+    await db.execute(createUsersTable);
+    await db.execute(createServersTable);
+    await db.execute(createCarsTable);
+    
+    console.log('Database tables created successfully');
+  } catch (error) {
+    console.error('Error creating database tables:', error);
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
