@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs/promises';
+import * as fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { storage } from '../storage';
 import { saveCarFile, extractCarFile, extractCarMetadata } from '../utils/carFileHandler';
@@ -67,8 +68,9 @@ router.post('/upload', upload.single('carFile'), async (req: Request, res: Respo
     const metadataResult = await extractCarMetadata(extractResult.extractedPath);
     
     // Prepare car data
-    const carName = metadataResult.success && metadataResult.metadata.name 
-      ? metadataResult.metadata.name 
+    const carName = metadataResult.success && metadataResult.metadata && 
+                    typeof metadataResult.metadata === 'object' && 'name' in metadataResult.metadata 
+      ? String(metadataResult.metadata.name)
       : path.basename(originalname, '.zip');
     
     const specs = metadataResult.success ? metadataResult.metadata : {};
@@ -79,8 +81,9 @@ router.post('/upload', upload.single('carFile'), async (req: Request, res: Respo
     
     // Determine the car category based on metadata or filename
     let category = "Sport";
-    if (metadataResult.success && metadataResult.metadata.category) {
-      category = metadataResult.metadata.category;
+    if (metadataResult.success && metadataResult.metadata && 
+        typeof metadataResult.metadata === 'object' && 'category' in metadataResult.metadata) {
+      category = String(metadataResult.metadata.category);
     } else if (originalname.toLowerCase().includes('drift')) {
       category = "Drift";
     } else if (originalname.toLowerCase().includes('gt')) {
@@ -156,7 +159,7 @@ router.get('/:id/download', async (req: Request, res: Response) => {
       res.setHeader('Content-Type', 'application/zip');
       
       // Stream the file
-      const fileStream = fs.createReadStream(filePath);
+      const fileStream = createReadStream(filePath);
       fileStream.pipe(res);
     } else {
       // If we don't have a file path, return a placeholder response

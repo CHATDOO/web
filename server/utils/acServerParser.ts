@@ -1,4 +1,11 @@
 import axios from 'axios';
+import { URL } from 'url';
+
+const AC_LINK_PATTERNS = [
+  { regex: /acstuff\.ru\/s\/[^\/]+\/online\/join\?ip=([^&]+)&httpPort=(\d+)/, format: 'acstuff' },
+  { regex: /assetto-corsa\.fr\/join\/\?ip=([^&]+)&httpPort=(\d+)/, format: 'ac-fr' },
+  { regex: /\/join\/\?ip=([^&]+)&httpPort=(\d+)/, format: 'generic' }
+];
 
 /**
  * Parses an Assetto Corsa server link
@@ -6,29 +13,72 @@ import axios from 'axios';
  */
 export async function parseAcServerLink(connectionLink: string) {
   try {
-    // Extract query parameters from the URL
-    const url = new URL(connectionLink);
-    const ip = url.searchParams.get('ip');
-    const httpPort = url.searchParams.get('httpPort');
+    // Match the link against known patterns
+    let serverIP = '';
+    let httpPort = '';
+    let matchedFormat = '';
     
-    if (!ip || !httpPort) {
-      throw new Error('Invalid server link format: missing IP or HTTP port');
+    for (const pattern of AC_LINK_PATTERNS) {
+      const match = connectionLink.match(pattern.regex);
+      if (match) {
+        serverIP = match[1];
+        httpPort = match[2];
+        matchedFormat = pattern.format;
+        break;
+      }
     }
     
-    // Attempt to fetch server details from the server API
-    const serverInfo = await fetchServerInfo(ip, httpPort);
+    // If no pattern matched, try to parse as URL
+    if (!serverIP || !httpPort) {
+      try {
+        const url = new URL(connectionLink);
+        serverIP = url.searchParams.get('ip') || '';
+        httpPort = url.searchParams.get('httpPort') || '';
+        
+        if (serverIP && httpPort) {
+          matchedFormat = 'url';
+        }
+      } catch (error) {
+        console.warn('Failed to parse as URL:', error);
+      }
+    }
+    
+    // If still no match, extract from connectionLink
+    if (!serverIP || !httpPort) {
+      const ipMatch = connectionLink.match(/ip=([^&]+)/);
+      const portMatch = connectionLink.match(/httpPort=(\d+)/);
+      
+      if (ipMatch) serverIP = ipMatch[1];
+      if (portMatch) httpPort = portMatch[1];
+      
+      if (serverIP && httpPort) {
+        matchedFormat = 'regex';
+      }
+    }
+    
+    // Validate extracted values
+    if (!serverIP || !httpPort) {
+      return {
+        success: false,
+        error: 'Could not extract server IP and HTTP port from the connection link'
+      };
+    }
+    
+    // Fetch server info
+    const serverInfo = await fetchServerInfo(serverIP, httpPort);
     
     return {
-      serverIP: ip,
+      success: true,
+      serverIP,
       httpPort,
-      serverInfo,
-      success: true
+      format: matchedFormat,
+      serverInfo
     };
   } catch (error) {
     console.error('Error parsing AC server link:', error);
     return {
-      error: error instanceof Error ? error.message : 'Unknown error parsing server link',
-      success: false
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
@@ -38,26 +88,38 @@ export async function parseAcServerLink(connectionLink: string) {
  */
 async function fetchServerInfo(ip: string, httpPort: string) {
   try {
-    // Construct the server info URL
-    const infoUrl = `http://${ip}:${httpPort}/api/details`;
+    const timeout = 5000; // 5 second timeout
+    const apiUrl = `http://${ip}:${httpPort}/api/details`;
     
-    // Fetch server details
-    const response = await axios.get(infoUrl, { timeout: 5000 });
-    const data = response.data;
+    const response = await axios.get(apiUrl, { timeout });
     
-    // Extract relevant information
-    return {
-      name: data.name || 'Unknown Server',
-      map: data.track?.name || data.track || 'Unknown Track',
-      cars: data.cars || [],
-      maxClients: data.maxClients || 0,
-      clients: data.clients?.length || 0,
-      description: data.description || '',
-      serverDetails: data
-    };
+    if (response.status === 200 && response.data) {
+      // Extract and normalize server data
+      const { 
+        name, 
+        cars, 
+        track,
+        maxclients: maxClients, 
+        clients, 
+        description,
+        ...rest
+      } = response.data;
+      
+      return { 
+        name, 
+        cars, 
+        map: track,
+        maxClients, 
+        clients, 
+        description,
+        serverDetails: rest
+      };
+    }
+    
+    return undefined;
   } catch (error) {
-    console.error('Error fetching server info:', error);
-    throw new Error('Could not fetch server information. The server may be offline.');
+    console.warn(`Failed to fetch server info from ${ip}:${httpPort}:`, error);
+    return undefined;
   }
 }
 
@@ -66,9 +128,13 @@ async function fetchServerInfo(ip: string, httpPort: string) {
  */
 export async function checkServerStatus(ip: string, httpPort: string): Promise<boolean> {
   try {
-    const response = await axios.get(`http://${ip}:${httpPort}/api/ping`, { timeout: 3000 });
+    const timeout = 3000; // 3 second timeout
+    const apiUrl = `http://${ip}:${httpPort}/api/ping`;
+    
+    const response = await axios.get(apiUrl, { timeout });
     return response.status === 200;
   } catch (error) {
+    console.warn(`Server at ${ip}:${httpPort} appears to be offline:`, error);
     return false;
   }
 }

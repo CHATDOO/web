@@ -1,24 +1,25 @@
-import path from 'path';
-import fs from 'fs/promises';
-import { createWriteStream } from 'fs';
-import { promisify } from 'util';
-import { pipeline } from 'stream';
-import { createUnzip } from 'zlib';
+import * as fs from 'fs';
+import * as fsp from 'fs/promises';
+import * as path from 'path';
 import AdmZip from 'adm-zip';
 import { v4 as uuidv4 } from 'uuid';
 
-const streamPipeline = promisify(pipeline);
+// Directory paths
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+const EXTRACTED_DIR = path.join(process.cwd(), 'uploads', 'extracted');
 
-// Base directory for uploaded car files
-const UPLOADS_DIR = path.resolve('./uploads');
-const CARS_DIR = path.resolve(UPLOADS_DIR, 'cars');
-const EXTRACTED_DIR = path.resolve(UPLOADS_DIR, 'extracted');
-
-// Ensure directories exist
+/**
+ * Ensures that the required directories exist
+ */
 async function ensureDirectories() {
-  await fs.mkdir(UPLOADS_DIR, { recursive: true });
-  await fs.mkdir(CARS_DIR, { recursive: true });
-  await fs.mkdir(EXTRACTED_DIR, { recursive: true });
+  try {
+    await fsp.mkdir(UPLOADS_DIR, { recursive: true });
+    await fsp.mkdir(EXTRACTED_DIR, { recursive: true });
+    return true;
+  } catch (error) {
+    console.error('Error creating directories:', error);
+    return false;
+  }
 }
 
 /**
@@ -31,24 +32,26 @@ export async function saveCarFile(fileBuffer: Buffer, fileName: string) {
   try {
     await ensureDirectories();
     
-    const fileId = uuidv4();
-    const fileExt = path.extname(fileName);
-    const safeFileName = `${fileId}${fileExt}`;
-    const filePath = path.join(CARS_DIR, safeFileName);
+    // Create a unique filename to prevent collisions
+    const uniqueId = uuidv4().split('-')[0];
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uniqueFileName = `${path.parse(safeName).name}_${uniqueId}${path.extname(safeName)}`;
+    const filePath = path.join(UPLOADS_DIR, uniqueFileName);
     
-    await fs.writeFile(filePath, fileBuffer);
+    // Write the file to disk
+    await fsp.writeFile(filePath, fileBuffer);
     
     return {
       success: true,
       filePath,
-      fileName: safeFileName,
-      originalName: fileName
+      originalName: fileName,
+      uniqueFileName
     };
   } catch (error) {
     console.error('Error saving car file:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error saving file'
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
@@ -62,31 +65,35 @@ export async function extractCarFile(filePath: string) {
   try {
     await ensureDirectories();
     
-    const fileId = path.basename(filePath, path.extname(filePath));
-    const extractionDir = path.join(EXTRACTED_DIR, fileId);
+    // Create a unique extraction directory
+    const fileName = path.basename(filePath, path.extname(filePath));
+    const extractDir = path.join(EXTRACTED_DIR, fileName);
     
-    // Create extraction directory
-    await fs.mkdir(extractionDir, { recursive: true });
+    // Ensure the extraction directory exists
+    await fsp.mkdir(extractDir, { recursive: true });
     
-    // Extract the ZIP file
+    // Extract the ZIP
     const zip = new AdmZip(filePath);
-    zip.extractAllTo(extractionDir, true);
+    zip.extractAllTo(extractDir, true);
     
-    // Look for .kn5 files (3D models)
-    const files = await findFiles(extractionDir, '.kn5');
-    const kn5Files = files.filter(file => file.endsWith('.kn5'));
+    // Look for 3D model files (.kn5)
+    const modelFiles = await findFiles(extractDir, '.kn5');
+    let model3dPath = '';
+    
+    if (modelFiles.length > 0) {
+      model3dPath = modelFiles[0]; // Use the first found model file
+    }
     
     return {
       success: true,
-      extractedPath: extractionDir,
-      model3dFiles: kn5Files,
-      model3dPath: kn5Files.length > 0 ? kn5Files[0] : null
+      extractedPath: extractDir,
+      model3dPath
     };
   } catch (error) {
     console.error('Error extracting car file:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error extracting file'
+      error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
@@ -100,16 +107,21 @@ export async function extractCarFile(filePath: string) {
 async function findFiles(directory: string, extension: string): Promise<string[]> {
   let results: string[] = [];
   
-  const items = await fs.readdir(directory, { withFileTypes: true });
-  
-  for (const item of items) {
-    const fullPath = path.join(directory, item.name);
+  try {
+    const files = await fsp.readdir(directory, { withFileTypes: true });
     
-    if (item.isDirectory()) {
-      results = results.concat(await findFiles(fullPath, extension));
-    } else if (item.isFile() && item.name.endsWith(extension)) {
-      results.push(fullPath);
+    for (const file of files) {
+      const fullPath = path.join(directory, file.name);
+      
+      if (file.isDirectory()) {
+        const nestedFiles = await findFiles(fullPath, extension);
+        results = [...results, ...nestedFiles];
+      } else if (path.extname(file.name).toLowerCase() === extension.toLowerCase()) {
+        results.push(fullPath);
+      }
     }
+  } catch (error) {
+    console.error(`Error finding files in ${directory}:`, error);
   }
   
   return results;
@@ -124,49 +136,67 @@ export async function extractCarMetadata(extractedPath: string) {
   try {
     // Look for common metadata files
     const metadataFiles = [
-      'ui_car.json',
-      'car.json',
-      'info.json'
+      path.join(extractedPath, 'ui_car.json'),
+      path.join(extractedPath, 'ui', 'ui_car.json')
     ];
     
-    let metadata = {};
+    let metadata: Record<string, any> = {};
+    let foundMetadata = false;
     
-    for (const file of metadataFiles) {
+    // Try each potential metadata file
+    for (const filePath of metadataFiles) {
       try {
-        const filePath = path.join(extractedPath, file);
-        const fileExists = await fs.stat(filePath).then(() => true).catch(() => false);
+        const exists = await fsp.access(filePath).then(() => true).catch(() => false);
         
-        if (fileExists) {
-          const content = await fs.readFile(filePath, 'utf-8');
-          const data = JSON.parse(content);
-          metadata = { ...metadata, ...data };
+        if (exists) {
+          const data = await fsp.readFile(filePath, 'utf-8');
+          metadata = JSON.parse(data);
+          foundMetadata = true;
+          break;
         }
       } catch (error) {
-        console.warn(`Could not read metadata from ${file}`);
+        console.warn(`Failed to read metadata from ${filePath}:`, error);
       }
     }
     
-    // Look for preview images
-    const imageExtensions = ['.jpg', '.jpeg', '.png'];
-    const imageFiles = [];
+    // Look for preview/car images
+    const imageExtensions = ['.png', '.jpg', '.jpeg'];
+    let mainImage = '';
     
     for (const ext of imageExtensions) {
-      const files = await findFiles(extractedPath, ext);
-      imageFiles.push(...files);
+      try {
+        const imageFiles = await findFiles(extractedPath, ext);
+        
+        // Try to find a preview image file
+        const previewImages = imageFiles.filter(file => 
+          file.toLowerCase().includes('preview') || 
+          file.toLowerCase().includes('car')
+        );
+        
+        if (previewImages.length > 0) {
+          mainImage = previewImages[0];
+          break;
+        } else if (imageFiles.length > 0) {
+          // If no preview image, use the first image found
+          mainImage = imageFiles[0];
+          break;
+        }
+      } catch (error) {
+        console.warn(`Failed to find ${ext} images:`, error);
+      }
     }
     
-    // Return extracted metadata
     return {
       success: true,
       metadata,
-      previewImages: imageFiles,
-      mainImage: imageFiles.length > 0 ? imageFiles[0] : null
+      mainImage
     };
   } catch (error) {
     console.error('Error extracting car metadata:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error extracting metadata'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      metadata: {}
     };
   }
 }
