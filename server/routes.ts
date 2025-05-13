@@ -260,28 +260,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Simulate car download
-  app.get('/api/cars/:id/download', async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const car = await storage.getCarById(id);
-      
-      if (!car) {
-        return res.status(404).json({ message: 'Car not found' });
-      }
-      
-      // In a real application, this would provide an actual file download
-      // For now, we'll just return a download confirmation message
-      res.json({ 
-        success: true, 
-        message: `Download started for ${car.name}`,
-        downloadUrl: car.downloadUrl
-      });
-    } catch (error) {
-      console.error('Error downloading car:', error);
-      res.status(500).json({ message: 'Failed to download car' });
-    }
-  });
+  // Use specialized upload and download routes for cars
+  app.use('/api/cars', carUploadRoutes);
+  
+  // Use specialized server parser routes
+  app.use('/api/servers', serverParserRoutes);
 
   // Stats endpoint
   app.get('/api/stats', async (req, res) => {

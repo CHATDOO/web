@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { toast } from "@/hooks/use-toast";
+import React from 'react';
+import { Link, useLocation } from 'wouter';
+import { useAuth } from '../hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ChevronLeft, Server, Car, LogOut, User, Settings } from 'lucide-react';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -11,99 +12,103 @@ interface AdminLayoutProps {
 }
 
 const AdminLayout = ({ children, title }: AdminLayoutProps) => {
-  const [location, navigate] = useLocation();
-  const { logout, isAuthenticated } = useAuth();
-  
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/admin/login");
-    }
-  }, [isAuthenticated, navigate]);
-  
+  const { logout } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  // Determine active section
+  const activePath = location.split('/')[2] || 'dashboard';
+
   const handleLogout = async () => {
     await logout();
-    navigate("/");
-    toast({
-      title: "Déconnecté",
-      description: "Vous avez été déconnecté avec succès.",
-    });
+    setLocation('/');
   };
-  
+
   return (
-    <div className="min-h-screen bg-[#121212]">
-      <div className="flex flex-col lg:flex-row">
-        {/* Sidebar */}
-        <div className="w-full lg:w-64 bg-[#1E1E1E] lg:min-h-screen p-4">
-          <div className="flex items-center justify-between mb-8">
-            <Link href="/">
-              <a className="text-primary font-montserrat font-bold text-xl">LesAffranchis</a>
-            </Link>
-            <Button
-              variant="ghost"
-              className="lg:hidden p-2 text-gray-400 hover:text-white"
-              onClick={() => navigate("/admin")}
-            >
-              <i className="fas fa-bars"></i>
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b bg-card">
+        <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
+          <Link href="/">
+            <Button variant="ghost" className="flex items-center mr-6">
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              <span className="font-bold">Retour au site</span>
             </Button>
-          </div>
-          
-          <div className="font-medium text-white mb-4">Navigation</div>
-          <ul className="space-y-2">
-            <li>
-              <Link href="/admin">
-                <a className={cn(
-                  "flex items-center px-3 py-2 rounded-md",
-                  location === "/admin" 
-                    ? "text-primary bg-[#2A2A2A]"
-                    : "text-gray-300 hover:text-white hover:bg-[#2A2A2A]"
-                )}>
-                  <i className="fas fa-home mr-2"></i> Tableau de bord
-                </a>
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/servers">
-                <a className={cn(
-                  "flex items-center px-3 py-2 rounded-md",
-                  location === "/admin/servers" 
-                    ? "text-primary bg-[#2A2A2A]"
-                    : "text-gray-300 hover:text-white hover:bg-[#2A2A2A]"
-                )}>
-                  <i className="fas fa-server mr-2"></i> Serveurs
-                </a>
-              </Link>
-            </li>
-            <li>
-              <Link href="/admin/cars">
-                <a className={cn(
-                  "flex items-center px-3 py-2 rounded-md",
-                  location === "/admin/cars" 
-                    ? "text-primary bg-[#2A2A2A]"
-                    : "text-gray-300 hover:text-white hover:bg-[#2A2A2A]"
-                )}>
-                  <i className="fas fa-car mr-2"></i> Voitures
-                </a>
-              </Link>
-            </li>
-            <li>
-              <button 
-                onClick={handleLogout}
-                className="w-full flex items-center px-3 py-2 rounded-md text-gray-300 hover:text-white hover:bg-[#2A2A2A]"
-              >
-                <i className="fas fa-sign-out-alt mr-2"></i> Déconnexion
-              </button>
-            </li>
-          </ul>
+          </Link>
+          <h1 className="text-lg font-semibold flex-1">
+            Administration LesAffranchis
+          </h1>
+          <Button variant="outline" onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            <span>Déconnexion</span>
+          </Button>
         </div>
-        
-        {/* Main content */}
-        <div className="flex-1 p-4">
-          <div className="bg-[#1E1E1E] rounded-lg p-4">
-            <h1 className="text-xl font-montserrat font-semibold text-white mb-6">{title}</h1>
+      </header>
+
+      {/* Main content */}
+      <div className="flex-1 container px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Sidebar */}
+          <aside className="col-span-12 lg:col-span-3">
+            <nav className="flex flex-col space-y-1">
+              <Link href="/admin">
+                <Button
+                  variant={activePath === 'dashboard' ? 'default' : 'ghost'}
+                  className="w-full justify-start"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Tableau de bord</span>
+                </Button>
+              </Link>
+              <Link href="/admin/servers">
+                <Button
+                  variant={activePath === 'servers' ? 'default' : 'ghost'}
+                  className="w-full justify-start"
+                >
+                  <Server className="mr-2 h-4 w-4" />
+                  <span>Serveurs</span>
+                </Button>
+              </Link>
+              <Link href="/admin/cars">
+                <Button
+                  variant={activePath === 'cars' ? 'default' : 'ghost'}
+                  className="w-full justify-start"
+                >
+                  <Car className="mr-2 h-4 w-4" />
+                  <span>Voitures</span>
+                </Button>
+              </Link>
+              <Link href="/admin/users">
+                <Button
+                  variant={activePath === 'users' ? 'default' : 'ghost'}
+                  className="w-full justify-start"
+                >
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Utilisateurs</span>
+                </Button>
+              </Link>
+            </nav>
+          </aside>
+
+          {/* Main content */}
+          <main className="col-span-12 lg:col-span-9 bg-card rounded-lg border shadow-sm p-6">
+            <h2 className="text-2xl font-bold mb-4">{title}</h2>
+            <Separator className="mb-6" />
             {children}
-          </div>
+          </main>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="border-t py-4 bg-card mt-auto">
+        <div className="container flex justify-between items-center px-4 sm:px-6 lg:px-8">
+          <p className="text-sm text-muted-foreground">
+            &copy; {new Date().getFullYear()} LesAffranchis
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Admin Panel v1.0
+          </p>
+        </div>
+      </footer>
     </div>
   );
 };
