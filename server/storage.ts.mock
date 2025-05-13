@@ -1,0 +1,200 @@
+// Ceci est un fichier temporaire pour initialiser des données de test
+// NE PAS utiliser en production
+
+import { InsertServer, InsertCar, InsertUser } from '@shared/schema';
+import { storage } from './storage';
+
+// Ajouter des utilisateurs de test
+async function addTestUsers() {
+  try {
+    // Admin
+    await storage.createUser({
+      id: 1,
+      username: 'admin',
+      password: 'admin123',
+      isAdmin: true,
+      email: 'admin@lesaffranchis.fr'
+    } as any);
+    
+    console.log('✅ Utilisateur admin créé avec succès');
+  } catch (error) {
+    console.error('❌ Erreur lors de la création des utilisateurs:', error);
+  }
+}
+
+// Ajouter des serveurs de test
+async function addTestServers() {
+  try {
+    const servers: InsertServer[] = [
+      {
+        name: 'LesAffranchis GT3',
+        description: 'Serveur GT3 pour les courses en championnat',
+        address: '82.67.56.137',
+        port: 9600,
+        httpPort: 8081,
+        connectionLink: 'https://acstuff.ru/s/q:race/online/join?ip=82.67.56.137&httpPort=8081',
+        category: 'GT3',
+        isOnline: true,
+        currentPlayers: 15,
+        maxPlayers: 24,
+        track: 'Spa Francorchamps',
+        imageUrl: 'https://i.imgur.com/XYZ123.jpg',
+      },
+      {
+        name: 'LesAffranchis Drift',
+        description: 'Serveur drift avec tracés spéciaux et classements automatiques',
+        address: '82.67.56.138',
+        port: 9601,
+        httpPort: 8082,
+        connectionLink: 'https://acstuff.ru/s/q:race/online/join?ip=82.67.56.138&httpPort=8082',
+        category: 'Drift',
+        isOnline: true,
+        currentPlayers: 8,
+        maxPlayers: 16,
+        track: 'Ebisu',
+        imageUrl: 'https://i.imgur.com/ABC456.jpg',
+      },
+      {
+        name: 'LesAffranchis Endurance',
+        description: 'Serveur d\'endurance pour les courses de 4h et plus',
+        address: '82.67.56.139',
+        port: 9602,
+        httpPort: 8083,
+        connectionLink: 'https://acstuff.ru/s/q:race/online/join?ip=82.67.56.139&httpPort=8083',
+        category: 'Endurance',
+        isOnline: false,
+        currentPlayers: 0,
+        maxPlayers: 30,
+        track: 'Nordschleife',
+        imageUrl: 'https://i.imgur.com/DEF789.jpg',
+      },
+    ];
+    
+    for (const server of servers) {
+      await storage.createServer(server);
+    }
+    
+    console.log('✅ Serveurs de test créés avec succès');
+  } catch (error) {
+    console.error('❌ Erreur lors de la création des serveurs:', error);
+  }
+}
+
+// Ajouter des voitures de test
+async function addTestCars() {
+  try {
+    const cars: InsertCar[] = [
+      {
+        name: 'Porsche 911 GT3 R',
+        category: 'GT3',
+        description: 'Version course de la Porsche 911, préparée pour les compétitions GT3',
+        imageUrl: 'https://i.imgur.com/123XYZ.jpg',
+        downloadUrl: '/api/cars/1/download',
+        model3dUrl: '/api/cars/1/model3d',
+        rating: 95,
+        serverId: 1,
+        specs: {
+          power: '520 CV',
+          weight: '1220 kg',
+          torque: '470 Nm',
+          transmission: 'Sequential 6-speed',
+          top_speed: '296 km/h'
+        },
+        filePath: '/uploads/cars/porsche_911_gt3.zip',
+      },
+      {
+        name: 'Nissan Silvia S15',
+        category: 'Drift',
+        description: 'Voiture japonaise populaire, modifiée pour le drift',
+        imageUrl: 'https://i.imgur.com/456ABC.jpg',
+        downloadUrl: '/api/cars/2/download',
+        model3dUrl: '/api/cars/2/model3d',
+        rating: 92,
+        serverId: 2,
+        specs: {
+          power: '480 CV',
+          weight: '1180 kg',
+          torque: '540 Nm',
+          transmission: 'Manual 6-speed',
+          top_speed: '260 km/h'
+        },
+        filePath: '/uploads/cars/nissan_silvia_s15.zip',
+      },
+      {
+        name: 'BMW M4 GT3',
+        category: 'GT3',
+        description: 'Voiture de course BMW M4 GT3 pour les compétitions officielles',
+        imageUrl: 'https://i.imgur.com/789DEF.jpg',
+        downloadUrl: '/api/cars/3/download',
+        model3dUrl: '/api/cars/3/model3d',
+        rating: 96,
+        serverId: 1,
+        specs: {
+          power: '590 CV',
+          weight: '1290 kg',
+          torque: '650 Nm',
+          transmission: 'Sequential 6-speed',
+          top_speed: '310 km/h'
+        },
+        filePath: '/uploads/cars/bmw_m4_gt3.zip',
+      },
+      {
+        name: 'Toyota Supra A90',
+        category: 'JDM',
+        description: 'Nouvelle génération de la légendaire Toyota Supra',
+        imageUrl: 'https://i.imgur.com/GHI123.jpg',
+        downloadUrl: '/api/cars/4/download',
+        model3dUrl: '/api/cars/4/model3d',
+        rating: 88,
+        serverId: null,
+        specs: {
+          power: '510 CV',
+          weight: '1570 kg',
+          torque: '650 Nm',
+          transmission: 'Automatic 8-speed',
+          top_speed: '285 km/h'
+        },
+        filePath: '/uploads/cars/toyota_supra_a90.zip',
+      },
+      {
+        name: 'Ferrari 488 GT3 EVO',
+        category: 'GT3',
+        description: 'Version évoluée de la Ferrari 488 GT3 pour les compétitions',
+        imageUrl: 'https://i.imgur.com/JKL456.jpg',
+        downloadUrl: '/api/cars/5/download',
+        model3dUrl: '/api/cars/5/model3d',
+        rating: 98,
+        serverId: 1,
+        specs: {
+          power: '600 CV',
+          weight: '1260 kg',
+          torque: '700 Nm',
+          transmission: 'Sequential 7-speed',
+          top_speed: '315 km/h'
+        },
+        filePath: '/uploads/cars/ferrari_488_gt3_evo.zip',
+      },
+    ];
+    
+    for (const car of cars) {
+      await storage.createCar(car);
+    }
+    
+    console.log('✅ Voitures de test créées avec succès');
+  } catch (error) {
+    console.error('❌ Erreur lors de la création des voitures:', error);
+  }
+}
+
+// Initialise toutes les données de test
+export async function initializeTestData() {
+  await addTestUsers();
+  await addTestServers();
+  await addTestCars();
+  console.log('✅ Toutes les données de test ont été initialisées');
+}
+
+// Appel si ce fichier est exécuté directement
+if (require.main === module) {
+  initializeTestData().catch(console.error);
+}

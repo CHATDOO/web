@@ -12,6 +12,7 @@ import { Strategy as LocalStrategy } from "passport-local";
 import MemoryStore from "memorystore";
 import carUploadRoutes from "./routes/carUploadRoutes";
 import serverParserRoutes from "./routes/serverParserRoutes";
+import statsRoutes from "./routes/statsRoutes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -265,26 +266,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Use specialized server parser routes
   app.use('/api/servers', serverParserRoutes);
-
-  // Stats endpoint
-  app.get('/api/stats', async (req, res) => {
-    try {
-      const servers = await storage.getAllServers();
-      const cars = await storage.getAllCars();
-      
-      const stats = {
-        serverCount: servers.length,
-        carCount: cars.length,
-        playerCount: servers.reduce((sum, server) => sum + server.currentPlayers, 0),
-        availability: "24/7"
-      };
-      
-      res.json(stats);
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-      res.status(500).json({ message: 'Failed to fetch stats' });
-    }
-  });
+  
+  // Use stats routes
+  app.use('/api/stats', statsRoutes);
 
   return httpServer;
 }
