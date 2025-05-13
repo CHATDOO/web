@@ -17,6 +17,9 @@ import statsRoutes from "./routes/statsRoutes";
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
+  // Initialize sample data if needed
+  await storage.initializeWithSampleData();
+  
   // Configure session
   const MemoryStoreSession = MemoryStore(session);
   app.use(session({

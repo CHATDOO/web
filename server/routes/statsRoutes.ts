@@ -1,7 +1,7 @@
-import express, { Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
 
-const router = express.Router();
+const router = Router();
 
 /**
  * Get dashboard statistics
@@ -9,36 +9,20 @@ const router = express.Router();
  */
 router.get('/', async (_req: Request, res: Response) => {
   try {
-    // Fetch counts from storage
     const servers = await storage.getAllServers();
     const cars = await storage.getAllCars();
     
-    // Calculate online servers
-    const onlineServers = servers.filter(server => server.isOnline);
-    
-    // Calculate total player count (sum of players in all servers)
-    const playerCount = servers.reduce((total, server) => {
-      return total + (server.currentPlayers || 0);
-    }, 0);
-    
-    // Calculate availability (percentage of online servers)
-    const availability = servers.length > 0 
-      ? Math.round((onlineServers.length / servers.length) * 100) 
-      : 100;
-    
-    // Response object
     const stats = {
       serverCount: servers.length,
       carCount: cars.length,
-      playerCount,
-      availability: `${availability}%`,
-      // Add more statistics as needed
+      playerCount: servers.reduce((sum, server) => sum + server.currentPlayers, 0),
+      availability: "24/7"
     };
     
-    return res.json(stats);
+    res.json(stats);
   } catch (error) {
-    console.error('Error fetching statistics:', error);
-    return res.status(500).json({ message: 'Failed to fetch statistics' });
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ message: 'Failed to fetch stats' });
   }
 });
 
@@ -48,22 +32,25 @@ router.get('/', async (_req: Request, res: Response) => {
  */
 router.get('/downloads', async (_req: Request, res: Response) => {
   try {
-    // This would typically come from a database
-    // For demonstration, we'll hard-code sample data
-    const downloadStats = [
-      { category: 'GT3', count: 145 },
-      { category: 'GT4', count: 98 },
-      { category: 'Drift', count: 120 },
-      { category: 'Rallye', count: 75 },
-      { category: 'Formula', count: 110 },
-      { category: 'JDM', count: 130 },
-      { category: 'Autre', count: 50 }
-    ];
+    const cars = await storage.getAllCars();
     
-    return res.json(downloadStats);
+    // In a real application, we would track actual downloads
+    // For demo, we'll generate some random download stats
+    const downloadStats = {
+      totalDownloads: 2367,
+      topDownloaded: cars.slice(0, 3).map(car => ({ 
+        id: car.id, 
+        name: car.name, 
+        downloads: Math.floor(Math.random() * 500) + 100 
+      })),
+      weeklyGrowth: "+12.5%",
+      monthlyGrowth: "+34.2%"
+    };
+    
+    res.json(downloadStats);
   } catch (error) {
-    console.error('Error fetching download statistics:', error);
-    return res.status(500).json({ message: 'Failed to fetch download statistics' });
+    console.error('Error fetching download stats:', error);
+    res.status(500).json({ message: 'Failed to fetch download statistics' });
   }
 });
 
@@ -73,32 +60,28 @@ router.get('/downloads', async (_req: Request, res: Response) => {
  */
 router.get('/player-activity', async (_req: Request, res: Response) => {
   try {
-    // Sample data for the last 7 days
-    const today = new Date();
-    const playerActivity = Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(today);
-      date.setDate(date.getDate() - (6 - i));
-      
-      // For demo purposes, generate random player counts that follow a weekly pattern
-      // (higher on weekends, lower on weekdays)
-      let playerCount = 30 + Math.floor(Math.random() * 20); // Base count between 30-50
-      
-      // Weekend boost
-      const dayOfWeek = date.getDay();
-      if (dayOfWeek === 0 || dayOfWeek === 6) { // 0 = Sunday, 6 = Saturday
-        playerCount += 20 + Math.floor(Math.random() * 20); // Add 20-40 more players on weekends
-      }
-      
-      return {
-        date: date.toISOString().split('T')[0], // YYYY-MM-DD format
-        count: playerCount
-      };
-    });
+    const servers = await storage.getAllServers();
     
-    return res.json(playerActivity);
+    // Generate player activity data
+    // In a real app, this would come from a database tracking player sessions
+    const playerActivity = {
+      currentOnline: servers.reduce((sum, server) => sum + server.currentPlayers, 0),
+      peakToday: servers.reduce((sum, server) => sum + server.currentPlayers, 0) + 12,
+      weeklyAverage: Math.floor(servers.reduce((sum, server) => sum + server.currentPlayers, 0) * 0.75),
+      activityByHour: Array.from({ length: 24 }, (_, hour) => ({
+        hour,
+        players: Math.floor(Math.random() * 40) + 5
+      })),
+      activityByDay: Array.from({ length: 7 }, (_, day) => ({
+        day: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day],
+        players: Math.floor(Math.random() * 60) + 20
+      }))
+    };
+    
+    res.json(playerActivity);
   } catch (error) {
     console.error('Error fetching player activity:', error);
-    return res.status(500).json({ message: 'Failed to fetch player activity' });
+    res.status(500).json({ message: 'Failed to fetch player activity statistics' });
   }
 });
 
@@ -108,20 +91,24 @@ router.get('/player-activity', async (_req: Request, res: Response) => {
  */
 router.get('/car-distribution', async (_req: Request, res: Response) => {
   try {
-    // In a real application, you would fetch this from the database
-    // For demonstration, we'll provide sample data
-    const distribution = [
-      { category: 'GT3', percentage: 35 },
-      { category: 'Drift', percentage: 25 },
-      { category: 'Rallye', percentage: 15 },
-      { category: 'JDM', percentage: 15 },
-      { category: 'Autre', percentage: 10 }
-    ];
+    const cars = await storage.getAllCars();
     
-    return res.json(distribution);
+    // Count cars by category
+    const categoryCounts: Record<string, number> = {};
+    cars.forEach(car => {
+      categoryCounts[car.category] = (categoryCounts[car.category] || 0) + 1;
+    });
+    
+    // Format for chart display
+    const carDistribution = Object.entries(categoryCounts).map(([category, count]) => ({
+      category,
+      count
+    }));
+    
+    res.json(carDistribution);
   } catch (error) {
     console.error('Error fetching car distribution:', error);
-    return res.status(500).json({ message: 'Failed to fetch car distribution' });
+    res.status(500).json({ message: 'Failed to fetch car distribution statistics' });
   }
 });
 
