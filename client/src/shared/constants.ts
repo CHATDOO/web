@@ -1,18 +1,26 @@
-// Car Categories
+// Catégories de voitures pour Assetto Corsa
 export const CAR_CATEGORIES = [
-  "GT",
-  "Sport",
-  "JDM",
-  "F1",
-  "Drift",
-  "Rally",
-];
+  'GT3',
+  'GT4',
+  'Drift',
+  'Rallye',
+  'Formula',
+  'Prototype',
+  'Road',
+  'Vintage',
+  'SuperCars',
+  'JDM',
+  'Autre'
+] as const;
 
-// Server Categories
+// Catégories de serveurs pour Assetto Corsa
 export const SERVER_CATEGORIES = [
-  "Drift",
-  "GT3",
-  "Touge",
-  "Street",
-  "Freestyle",
-];
+  'GT3',
+  'GT4',
+  'Drift',
+  'Rallye',
+  'Pratique libre',
+  'Endurance',
+  'Course',
+  'Autre'
+] as const;

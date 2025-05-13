@@ -48,7 +48,7 @@ const ServerAdd = () => {
   const [addMethod, setAddMethod] = useState('link');
   const [serverInfo, setServerInfo] = useState<any>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'parsing' | 'success' | 'error'>('idle');
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
 
   // Link form
