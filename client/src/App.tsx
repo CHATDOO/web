@@ -11,6 +11,8 @@ import Login from "@/pages/Admin/Login";
 import Dashboard from "@/pages/Admin/Dashboard";
 import ServerManagement from "@/pages/Admin/ServerManagement";
 import CarManagement from "@/pages/Admin/CarManagement";
+import ServerAdd from "@/pages/Admin/ServerAdd";
+import CarUpload from "@/pages/Admin/CarUpload";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -25,7 +27,9 @@ function Router() {
       <Route path="/admin/login" component={Login} />
       <Route path="/admin" component={Dashboard} />
       <Route path="/admin/servers" component={ServerManagement} />
+      <Route path="/admin/servers/add" component={ServerAdd} />
       <Route path="/admin/cars" component={CarManagement} />
+      <Route path="/admin/cars/upload" component={CarUpload} />
       <Route component={NotFound} />
     </Switch>
   );

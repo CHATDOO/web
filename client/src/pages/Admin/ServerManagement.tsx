@@ -1,794 +1,285 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Helmet } from "react-helmet";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import AdminLayout from "@/components/AdminLayout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogClose,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { Server, InsertServer, insertServerSchema, SERVER_CATEGORIES } from "@shared/schema";
-
-// Extended schema with validations
-const serverFormSchema = insertServerSchema.extend({
-  name: z.string().min(3, "Le nom doit contenir au moins 3 caractères"),
-  description: z.string().min(10, "La description doit contenir au moins 10 caractères"),
-  map: z.string().min(3, "Le nom de la carte doit contenir au moins 3 caractères"),
-  maxPlayers: z.number().min(1, "Le nombre maximum de joueurs doit être au moins 1").max(128, "Le nombre maximum de joueurs ne peut pas dépasser 128"),
-  currentPlayers: z.number().min(0, "Le nombre de joueurs actuels ne peut pas être négatif"),
-  connectionLink: z.string().url("Veuillez entrer une URL valide"),
-  imageUrl: z.string().url("Veuillez entrer une URL valide").optional().or(z.literal("")),
-  trackCount: z.number().min(1, "Le nombre de pistes doit être au moins 1"),
-});
-
-type ServerFormValues = z.infer<typeof serverFormSchema>;
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import AdminLayout from '../../components/AdminLayout';
+import { Link, useLocation } from 'wouter';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { format } from 'date-fns';
+import { Server, Plus, Search, MoreVertical, Edit, Trash2, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
+import { SERVER_CATEGORIES } from '../../shared/constants';
 
 const ServerManagement = () => {
-  const [isAddServerDialogOpen, setIsAddServerDialogOpen] = useState(false);
-  const [isEditServerDialogOpen, setIsEditServerDialogOpen] = useState(false);
-  const [selectedServer, setSelectedServer] = useState<Server | null>(null);
-  const [serverIdToDelete, setServerIdToDelete] = useState<number | null>(null);
-  
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  
-  const { data: servers, isLoading } = useQuery<Server[]>({
+  const [, setLocation] = useLocation();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedServerId, setSelectedServerId] = useState<number | null>(null);
+
+  // Fetch servers data
+  const { data: servers = [], isLoading, refetch } = useQuery({ 
     queryKey: ['/api/servers'],
+    retry: false 
   });
-  
-  // Form for adding a new server
-  const addServerForm = useForm<ServerFormValues>({
-    resolver: zodResolver(serverFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      category: SERVER_CATEGORIES[0],
-      map: "",
-      maxPlayers: 24,
-      currentPlayers: 0,
-      isOnline: true,
-      connectionLink: "ac://lesaffranchis.com:8081",
-      imageUrl: "",
-      trackCount: 1,
-    },
+
+  // Filter servers
+  const filteredServers = servers.filter((server: any) => {
+    let matchesSearch = true;
+    let matchesCategory = true;
+    let matchesStatus = true;
+
+    if (searchQuery) {
+      matchesSearch = 
+        server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        server.description.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+
+    if (categoryFilter) {
+      matchesCategory = server.category === categoryFilter;
+    }
+
+    if (statusFilter) {
+      matchesStatus = 
+        (statusFilter === 'online' && server.isOnline) ||
+        (statusFilter === 'offline' && !server.isOnline);
+    }
+
+    return matchesSearch && matchesCategory && matchesStatus;
   });
-  
-  // Form for editing an existing server
-  const editServerForm = useForm<ServerFormValues>({
-    resolver: zodResolver(serverFormSchema),
-    defaultValues: {
-      name: "",
-      description: "",
-      category: SERVER_CATEGORIES[0],
-      map: "",
-      maxPlayers: 24,
-      currentPlayers: 0,
-      isOnline: true,
-      connectionLink: "",
-      imageUrl: "",
-      trackCount: 1,
-    },
-  });
-  
-  // Add server mutation
-  const addServerMutation = useMutation({
-    mutationFn: async (data: InsertServer) => {
-      const response = await apiRequest('POST', '/api/servers', data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/servers'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/stats'] });
-      toast({
-        title: "Serveur ajouté",
-        description: "Le serveur a été ajouté avec succès",
+
+  // Delete server
+  const handleDelete = async () => {
+    if (!selectedServerId) return;
+
+    try {
+      const response = await fetch(`/api/servers/${selectedServerId}`, {
+        method: 'DELETE',
       });
-      setIsAddServerDialogOpen(false);
-      addServerForm.reset();
-    },
-    onError: (error) => {
+
+      if (response.ok) {
+        toast({
+          title: 'Serveur supprimé',
+          description: 'Le serveur a été supprimé avec succès',
+        });
+        refetch();
+      } else {
+        toast({
+          title: 'Erreur',
+          description: 'Une erreur est survenue lors de la suppression du serveur',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
       toast({
-        title: "Erreur",
-        description: `Erreur lors de l'ajout du serveur: ${error.message}`,
-        variant: "destructive",
+        title: 'Erreur',
+        description: 'Une erreur est survenue lors de la suppression du serveur',
+        variant: 'destructive',
       });
-    },
-  });
-  
-  // Edit server mutation
-  const editServerMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertServer> }) => {
-      const response = await apiRequest('PATCH', `/api/servers/${id}`, data);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/servers'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/stats'] });
-      toast({
-        title: "Serveur mis à jour",
-        description: "Le serveur a été mis à jour avec succès",
-      });
-      setIsEditServerDialogOpen(false);
-      setSelectedServer(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Erreur",
-        description: `Erreur lors de la mise à jour du serveur: ${error.message}`,
-        variant: "destructive",
-      });
-    },
-  });
-  
-  // Delete server mutation
-  const deleteServerMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const response = await apiRequest('DELETE', `/api/servers/${id}`, undefined);
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/servers'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/stats'] });
-      toast({
-        title: "Serveur supprimé",
-        description: "Le serveur a été supprimé avec succès",
-      });
-      setServerIdToDelete(null);
-    },
-    onError: (error) => {
-      toast({
-        title: "Erreur",
-        description: `Erreur lors de la suppression du serveur: ${error.message}`,
-        variant: "destructive",
-      });
-    },
-  });
-  
-  const onAddServerSubmit = (data: ServerFormValues) => {
-    addServerMutation.mutate(data);
-  };
-  
-  const onEditServerSubmit = (data: ServerFormValues) => {
-    if (selectedServer) {
-      editServerMutation.mutate({ id: selectedServer.id, data });
+    } finally {
+      setDeleteDialogOpen(false);
+      setSelectedServerId(null);
     }
   };
-  
-  const handleEditServer = (server: Server) => {
-    setSelectedServer(server);
-    
-    // Set form values
-    editServerForm.reset({
-      name: server.name,
-      description: server.description,
-      category: server.category,
-      map: server.map,
-      maxPlayers: server.maxPlayers,
-      currentPlayers: server.currentPlayers,
-      isOnline: server.isOnline,
-      connectionLink: server.connectionLink,
-      imageUrl: server.imageUrl || "",
-      trackCount: server.trackCount,
-    });
-    
-    setIsEditServerDialogOpen(true);
-  };
-  
-  const handleDeleteServer = (id: number) => {
-    setServerIdToDelete(id);
-  };
-  
-  const confirmDeleteServer = () => {
-    if (serverIdToDelete !== null) {
-      deleteServerMutation.mutate(serverIdToDelete);
+
+  // Update server status
+  const handleUpdateStatus = async (serverId: number) => {
+    try {
+      const response = await fetch(`/api/servers/${serverId}/update-status`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        toast({
+          title: 'Statut mis à jour',
+          description: 'Le statut du serveur a été mis à jour avec succès',
+        });
+        refetch();
+      } else {
+        toast({
+          title: 'Erreur',
+          description: 'Une erreur est survenue lors de la mise à jour du statut',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Erreur',
+        description: 'Une erreur est survenue lors de la mise à jour du statut',
+        variant: 'destructive',
+      });
     }
   };
-  
+
+  const confirmDelete = (serverId: number) => {
+    setSelectedServerId(serverId);
+    setDeleteDialogOpen(true);
+  };
+
   return (
-    <>
-      <Helmet>
-        <title>Gestion des Serveurs - LesAffranchis Admin</title>
-        <meta name="robots" content="noindex, nofollow" />
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-      </Helmet>
-      
-      <AdminLayout title="Gestion des Serveurs">
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <p className="text-gray-400">
-              Gérez vos serveurs Assetto Corsa, modifiez leurs paramètres et suivez leur état.
-            </p>
+    <AdminLayout title="Gestion des serveurs">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-[300px]">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher un serveur..."
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          <Dialog open={isAddServerDialogOpen} onOpenChange={setIsAddServerDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90">
-                <i className="fas fa-plus mr-2"></i>Nouveau Serveur
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px] bg-[#1E1E1E] text-white">
-              <DialogHeader>
-                <DialogTitle>Ajouter un nouveau serveur</DialogTitle>
-              </DialogHeader>
-              <Form {...addServerForm}>
-                <form onSubmit={addServerForm.handleSubmit(onAddServerSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={addServerForm.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nom du serveur</FormLabel>
-                          <FormControl>
-                            <Input placeholder="GT3 Racing Challenge" {...field} className="bg-[#2A2A2A] border-gray-700" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={addServerForm.control}
-                      name="category"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Catégorie</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="bg-[#2A2A2A] border-gray-700">
-                                <SelectValue placeholder="Sélectionnez une catégorie" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="bg-[#2A2A2A] border-gray-700">
-                              {SERVER_CATEGORIES.map((category) => (
-                                <SelectItem key={category} value={category}>
-                                  {category}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  
-                  <FormField
-                    control={addServerForm.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Description de votre serveur..."
-                            {...field}
-                            className="bg-[#2A2A2A] border-gray-700 min-h-[100px]"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={addServerForm.control}
-                      name="map"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Carte principale</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Nürburgring GP" {...field} className="bg-[#2A2A2A] border-gray-700" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={addServerForm.control}
-                      name="trackCount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nombre de pistes</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              {...field}
-                              onChange={(e) => field.onChange(parseInt(e.target.value))}
-                              className="bg-[#2A2A2A] border-gray-700"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <FormField
-                      control={addServerForm.control}
-                      name="maxPlayers"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Nombre max. de joueurs</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              {...field}
-                              onChange={(e) => field.onChange(parseInt(e.target.value))}
-                              className="bg-[#2A2A2A] border-gray-700"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={addServerForm.control}
-                      name="currentPlayers"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Joueurs actuels</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              {...field}
-                              onChange={(e) => field.onChange(parseInt(e.target.value))}
-                              className="bg-[#2A2A2A] border-gray-700"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={addServerForm.control}
-                      name="isOnline"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>État</FormLabel>
-                          <Select
-                            onValueChange={(value) => field.onChange(value === "true")}
-                            defaultValue={field.value ? "true" : "false"}
-                          >
-                            <FormControl>
-                              <SelectTrigger className="bg-[#2A2A2A] border-gray-700">
-                                <SelectValue placeholder="État du serveur" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="bg-[#2A2A2A] border-gray-700">
-                              <SelectItem value="true">En ligne</SelectItem>
-                              <SelectItem value="false">Hors ligne</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  
-                  <FormField
-                    control={addServerForm.control}
-                    name="connectionLink"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Lien de connexion</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="ac://lesaffranchis.com:8081"
-                            {...field}
-                            className="bg-[#2A2A2A] border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={addServerForm.control}
-                    name="imageUrl"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>URL de l'image</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="https://example.com/image.jpg"
-                            {...field}
-                            className="bg-[#2A2A2A] border-gray-700"
-                          />
-                        </FormControl>
-                        <FormDescription className="text-gray-500">
-                          URL d'une image représentant votre serveur (optionnel)
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <div className="flex justify-end space-x-2 pt-4">
-                    <DialogClose asChild>
-                      <Button variant="outline" className="border-gray-700">Annuler</Button>
-                    </DialogClose>
-                    <Button 
-                      type="submit" 
-                      className="bg-primary hover:bg-primary/90"
-                      disabled={addServerMutation.isPending}
-                    >
-                      {addServerMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                      Ajouter le serveur
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+          
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Toutes catégories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Toutes catégories</SelectItem>
+              {SERVER_CATEGORIES.map((category) => (
+                <SelectItem key={category} value={category}>{category}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Tous statuts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Tous statuts</SelectItem>
+              <SelectItem value="online">En ligne</SelectItem>
+              <SelectItem value="offline">Hors ligne</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         
-        {isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-10 w-full bg-gray-700" />
-            <Skeleton className="h-96 w-full bg-gray-700" />
-          </div>
-        ) : servers && servers.length > 0 ? (
-          <div className="rounded-md border border-gray-700">
-            <Table>
-              <TableHeader className="bg-[#252525]">
-                <TableRow>
-                  <TableHead className="text-gray-300">Nom</TableHead>
-                  <TableHead className="text-gray-300">Catégorie</TableHead>
-                  <TableHead className="text-gray-300">Statut</TableHead>
-                  <TableHead className="text-gray-300">Joueurs</TableHead>
-                  <TableHead className="text-gray-300">Carte</TableHead>
-                  <TableHead className="text-gray-300 text-right">Actions</TableHead>
+        <Link href="/admin/servers/add">
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Ajouter un serveur
+          </Button>
+        </Link>
+      </div>
+      
+      <div className="bg-white dark:bg-gray-950 rounded-md border shadow-sm">
+        <Table>
+          <TableCaption>Liste des serveurs ({filteredServers.length})</TableCaption>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nom</TableHead>
+              <TableHead>Catégorie</TableHead>
+              <TableHead>Joueurs</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead className="hidden md:table-cell">Dernière mise à jour</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-6">
+                  <div className="flex justify-center items-center">
+                    <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                    <span>Chargement des serveurs...</span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : filteredServers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
+                  Aucun serveur trouvé
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredServers.map((server: any) => (
+                <TableRow key={server.id}>
+                  <TableCell className="font-medium">
+                    <div className="flex items-center">
+                      <Server className="h-4 w-4 mr-2 text-muted-foreground" />
+                      {server.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate max-w-[300px]">
+                      {server.description}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{server.category}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    {server.currentPlayers}/{server.maxPlayers}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center">
+                      <div className={`w-2 h-2 rounded-full mr-2 ${server.isOnline ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span>{server.isOnline ? 'En ligne' : 'Hors ligne'}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {server.lastUpdated 
+                      ? format(new Date(server.lastUpdated), 'dd/MM/yyyy HH:mm')
+                      : 'Jamais'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleUpdateStatus(server.id)}>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Mettre à jour le statut
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => window.open(server.connectionLink, '_blank')}>
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                          Ouvrir le lien
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setLocation(`/admin/servers/edit/${server.id}`)}>
+                          <Edit className="mr-2 h-4 w-4" />
+                          Modifier
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => confirmDelete(server.id)}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Supprimer
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {servers.map((server) => (
-                  <TableRow key={server.id} className="border-t border-gray-700">
-                    <TableCell className="font-medium text-white">{server.name}</TableCell>
-                    <TableCell>{server.category}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <span className={`h-2 w-2 ${server.isOnline ? 'bg-green-500' : 'bg-red-500'} rounded-full mr-2 ${server.isOnline ? 'animate-pulse' : ''}`}></span>
-                        <span>{server.isOnline ? 'En ligne' : 'Hors ligne'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>{server.currentPlayers}/{server.maxPlayers}</TableCell>
-                    <TableCell>{server.map}</TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-secondary hover:text-secondary/80"
-                        onClick={() => handleEditServer(server)}
-                      >
-                        <i className="fas fa-edit"></i>
-                        <span className="sr-only">Modifier</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-primary hover:text-primary/80"
-                        onClick={() => handleDeleteServer(server.id)}
-                      >
-                        <i className="fas fa-trash-alt"></i>
-                        <span className="sr-only">Supprimer</span>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="text-center py-10 border border-gray-700 rounded-md">
-            <div className="text-4xl text-gray-500 mb-4">
-              <i className="fas fa-server"></i>
-            </div>
-            <h3 className="text-xl font-semibold text-gray-300">Aucun serveur disponible</h3>
-            <p className="text-gray-400 mt-2">Ajoutez votre premier serveur Assetto Corsa</p>
-          </div>
-        )}
-        
-        {/* Edit Server Dialog */}
-        <Dialog open={isEditServerDialogOpen} onOpenChange={setIsEditServerDialogOpen}>
-          <DialogContent className="sm:max-w-[600px] bg-[#1E1E1E] text-white">
-            <DialogHeader>
-              <DialogTitle>Modifier le serveur</DialogTitle>
-            </DialogHeader>
-            <Form {...editServerForm}>
-              <form onSubmit={editServerForm.handleSubmit(onEditServerSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={editServerForm.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nom du serveur</FormLabel>
-                        <FormControl>
-                          <Input placeholder="GT3 Racing Challenge" {...field} className="bg-[#2A2A2A] border-gray-700" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={editServerForm.control}
-                    name="category"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Catégorie</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="bg-[#2A2A2A] border-gray-700">
-                              <SelectValue placeholder="Sélectionnez une catégorie" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-[#2A2A2A] border-gray-700">
-                            {SERVER_CATEGORIES.map((category) => (
-                              <SelectItem key={category} value={category}>
-                                {category}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <FormField
-                  control={editServerForm.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Description de votre serveur..."
-                          {...field}
-                          className="bg-[#2A2A2A] border-gray-700 min-h-[100px]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={editServerForm.control}
-                    name="map"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Carte principale</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Nürburgring GP" {...field} className="bg-[#2A2A2A] border-gray-700" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={editServerForm.control}
-                    name="trackCount"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre de pistes</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value))}
-                            className="bg-[#2A2A2A] border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={editServerForm.control}
-                    name="maxPlayers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre max. de joueurs</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value))}
-                            className="bg-[#2A2A2A] border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={editServerForm.control}
-                    name="currentPlayers"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Joueurs actuels</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            {...field}
-                            onChange={(e) => field.onChange(parseInt(e.target.value))}
-                            className="bg-[#2A2A2A] border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={editServerForm.control}
-                    name="isOnline"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>État</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === "true")}
-                          defaultValue={field.value ? "true" : "false"}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="bg-[#2A2A2A] border-gray-700">
-                              <SelectValue placeholder="État du serveur" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="bg-[#2A2A2A] border-gray-700">
-                            <SelectItem value="true">En ligne</SelectItem>
-                            <SelectItem value="false">Hors ligne</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                
-                <FormField
-                  control={editServerForm.control}
-                  name="connectionLink"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Lien de connexion</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="ac://lesaffranchis.com:8081"
-                          {...field}
-                          className="bg-[#2A2A2A] border-gray-700"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={editServerForm.control}
-                  name="imageUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>URL de l'image</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="https://example.com/image.jpg"
-                          {...field}
-                          className="bg-[#2A2A2A] border-gray-700"
-                        />
-                      </FormControl>
-                      <FormDescription className="text-gray-500">
-                        URL d'une image représentant votre serveur (optionnel)
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <div className="flex justify-end space-x-2 pt-4">
-                  <DialogClose asChild>
-                    <Button variant="outline" className="border-gray-700">Annuler</Button>
-                  </DialogClose>
-                  <Button 
-                    type="submit" 
-                    className="bg-primary hover:bg-primary/90"
-                    disabled={editServerMutation.isPending}
-                  >
-                    {editServerMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                    Mettre à jour
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-        
-        {/* Delete Server Alert Dialog */}
-        <AlertDialog open={serverIdToDelete !== null} onOpenChange={(open) => !open && setServerIdToDelete(null)}>
-          <AlertDialogContent className="bg-[#1E1E1E] text-white border border-gray-700">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Êtes-vous sûr de vouloir supprimer ce serveur ?</AlertDialogTitle>
-              <AlertDialogDescription className="text-gray-400">
-                Cette action est irréversible. Toutes les données associées à ce serveur seront perdues.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel className="bg-[#2A2A2A] border-gray-700 text-white hover:bg-[#333] hover:text-white">
-                Annuler
-              </AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-primary hover:bg-primary/90"
-                onClick={confirmDeleteServer}
-                disabled={deleteServerMutation.isPending}
-              >
-                {deleteServerMutation.isPending && <i className="fas fa-spinner fa-spin mr-2"></i>}
-                Supprimer
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </AdminLayout>
-    </>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Êtes-vous sûr ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Cette action ne peut pas être annulée. Cela supprimera définitivement le serveur
+              de notre base de données.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-600 text-white hover:bg-red-700">
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AdminLayout>
   );
 };
 
